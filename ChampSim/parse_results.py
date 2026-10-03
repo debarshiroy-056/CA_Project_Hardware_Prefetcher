@@ -2,12 +2,6 @@ import os
 import re
 import pandas as pd
 
-import matplotlib.pyplot as plt
-
-plt.rcParams['font.family'] = 'serif'
-plt.rcParams['font.serif'] = ['Times New Roman']
-plt.rcParams['mathtext.fontset'] = 'stix' # Matches Times for math symbols
-
 configs = ['baseline', 'stride', 'spp', 'ampm']
 results = []
 
@@ -25,8 +19,12 @@ for cfg in configs:
         with open(filepath, 'r', errors='ignore') as f:
             content = f.read()
         
-        # Check if the run finished completely
-        if "Cumulative IPC:" not in content and "cumulative IPC:" not in content:
+        # Check if the simulation phase finished completely
+        sim_match = re.search(
+            r"Simulation (?:finished|complete) CPU 0 instructions:\s*(\d+)\s+cycles:\s*\d+\s+cumulative IPC:\s*([0-9\.]+)",
+            content
+        )
+        if not sim_match:
             results.append({
                 "Config": cfg,
                 "Trace": trace_name,
@@ -36,41 +34,47 @@ for cfg in configs:
                 "L2C_MPKI": None,
                 "PF_Issued": None,
                 "PF_Useful": None,
+                "PF_Useless": None,
                 "PF_Accuracy": None,
                 "DRAM_Traffic": None
             })
             continue
 
-        # Extract IPC
-        ipc_match = re.search(r"(?:Cumulative IPC|cumulative IPC):\s*([0-9\.]+)", content)
-        ipc = float(ipc_match.group(1)) if ipc_match else None
+        instructions = int(sim_match.group(1))
+        ipc = float(sim_match.group(2))
 
-        # Extract Instructions
-        inst_match = re.search(r"CPU 0 cumulative instructions:\s*(\d+)", content)
-        instructions = int(inst_match.group(1)) if inst_match else 100000000
+        # Extract L2C demand misses by removing prefetch misses from total L2C misses
+        l2_total_match = re.search(
+            r"cpu0_L2C TOTAL\s+ACCESS:\s+\d+\s+HIT:\s+\d+\s+MISS:\s+(\d+)",
+            content,
+        )
+        l2_pf_match = re.search(
+            r"cpu0_L2C PREFETCH\s+ACCESS:\s+\d+\s+HIT:\s+\d+\s+MISS:\s+(\d+)",
+            content,
+        )
 
-        # Extract L2C Demand Misses
-        l2c_miss = None
-        l2_section = re.search(r"L2C TOTAL\s+ACCESS:\s+\d+\s+HIT:\s+\d+\s+MISS:\s+(\d+)", content)
-        if l2_section:
-            l2c_miss = int(l2_section.group(1))
+        if l2_total_match:
+            total_miss = int(l2_total_match.group(1))
+            pf_miss = int(l2_pf_match.group(1)) if l2_pf_match else 0
+            l2c_miss = total_miss - pf_miss
         else:
-            # Fallback search for specific cache line format
-            l2_miss_match = re.search(r"L2C.*?LOAD\s+ACCESS:\s+\d+\s+HIT:\s+\d+\s+MISS:\s+(\d+)", content, re.DOTALL)
-            if l2_miss_match:
-                l2c_miss = int(l2_miss_match.group(1))
+            l2c_miss = None
 
         # Calculate MPKI
         mpki = (l2c_miss / (instructions / 1000.0)) if l2c_miss is not None else None
 
-        # Extract Prefetch Stats (Useful / Issued)
-        pf_useful_match = re.search(r"L2C PREFETCH\s+REQUESTED:\s+\d+\s+ISSUED:\s+(\d+)\s+USEFUL:\s+(\d+)", content)
-        pf_issued = int(pf_useful_match.group(1)) if pf_useful_match else 0
-        pf_useful = int(pf_useful_match.group(2)) if pf_useful_match else 0
-        accuracy = (pf_useful / pf_issued) if pf_issued > 0 else 0.0
+        # Extract Prefetch Stats: Accuracy = Useful / Prefetch Fill (Useful + Useless)
+        pf_match = re.search(
+            r"cpu0_L2C PREFETCH REQUESTED:\s+\d+\s+ISSUED:\s+(\d+)\s+USEFUL:\s+(\d+)\s+USELESS:\s+(\d+)",
+            content
+        )
+        pf_issued = int(pf_match.group(1)) if pf_match else 0
+        pf_useful = int(pf_match.group(2)) if pf_match else 0
+        pf_useless = int(pf_match.group(3)) if pf_match else 0
+        pf_fill = pf_useful + pf_useless
+        accuracy = (pf_useful / pf_fill) if pf_fill > 0 else 0.0
 
-        # Extract DRAM traffic from row-buffer hits and misses. The output
-        # reports the hit/miss counts on separate lines for each channel.
+        # Extract DRAM traffic from row-buffer hits and misses
         dram_reads = re.findall(
             r"Channel\s+\d+\s+RQ ROW_BUFFER_HIT:\s*(\d+)\s*"
             r"\n\s*ROW_BUFFER_MISS:\s*(\d+)",
@@ -96,6 +100,7 @@ for cfg in configs:
             "L2C_MPKI": round(mpki, 4) if mpki is not None else None,
             "PF_Issued": pf_issued,
             "PF_Useful": pf_useful,
+            "PF_Useless": pf_useless,
             "PF_Accuracy": round(accuracy * 100, 2),
             "DRAM_Traffic": total_dram
         })
