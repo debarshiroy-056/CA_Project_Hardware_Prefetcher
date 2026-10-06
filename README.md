@@ -12,6 +12,61 @@ This repository contains the experimental pipeline, configuration files, and ana
 
 ---
 
+## Experimental Workflow
+
+```mermaid
+flowchart TD
+    subgraph S1["1. Configuration & Compilation"]
+        A[JSON Configs<br/>L1I / L1D / LLC Prefetcher: 'no'] --> B1[Baseline Binary<br/>L2C: no + Access Dumper]
+        A --> B2[Stride Binary<br/>L2C: ip_stride]
+        A --> B3[SPP Binary<br/>L2C: spp_dev]
+        A --> B4[AMPM Binary<br/>L2C: va_ampm_lite]
+    end
+
+    subgraph S2["2. Batch Execution (50M Warmup / 100M Sim)"]
+        W[Workload Suite: 10 Traces<br/>SPEC CPU2017, Ligra Graph, Llama2 AI] --> E[Bash Job Controller<br/>MAX_JOBS = 3 for 8GB RAM]
+        B1 & B2 & B3 & B4 --> E
+        E --> R[Raw Simulation Logs<br/>results_baseline, stride, spp, ampm]
+        B1 -.->|50K Post-Warmup L2 Loads| D[L2 Demand Access Samples<br/>PC, CacheLineAddr, Order, Hit/Miss]
+    end
+
+    subgraph S3["3. Data Parsing & Characterization"]
+        R --> P[parse_results.py<br/>Isolates Demand Misses = Total - Prefetch]
+        P --> CSV[(simulation_summary.csv)]
+        D --> C[analyze_accesses.py]
+        C --> C1[A. PC-Local Delta Behavior]
+        C --> C2[B. Ordered Delta History]
+        C --> C3[C. 4-KB Spatial Footprints]
+    end
+
+    subgraph S4["4. Academic Visualization (Times New Roman, 300 DPI)"]
+        CSV --> V1[ipc_speedup.png]
+        CSV --> V2[l2c_mpki.png]
+        CSV --> V3[pf_accuracy.png]
+        CSV --> V4[pf_coverage.png]
+        CSV --> V5[dram_traffic.png]
+    end
+
+    classDef config fill:#dbeafe,stroke:#1d4ed8,color:#172554,stroke-width:2px
+    classDef execution fill:#dcfce7,stroke:#15803d,color:#14532d,stroke-width:2px
+    classDef analysis fill:#fef3c7,stroke:#b45309,color:#451a03,stroke-width:2px
+    classDef visualization fill:#ede9fe,stroke:#6d28d9,color:#2e1065,stroke-width:2px
+    classDef data fill:#f1f5f9,stroke:#475569,color:#0f172a,stroke-width:2px
+
+    class A,B1,B2,B3,B4 config
+    class W,E execution
+    class R,D,CSV data
+    class P,C,C1,C2,C3 analysis
+    class V1,V2,V3,V4,V5 visualization
+
+    style S1 fill:#eff6ff,stroke:#60a5fa,stroke-width:2px
+    style S2 fill:#f0fdf4,stroke:#4ade80,stroke-width:2px
+    style S3 fill:#fffbeb,stroke:#f59e0b,stroke-width:2px
+    style S4 fill:#f5f3ff,stroke:#a78bfa,stroke-width:2px
+```
+
+---
+
 ## 1. Environment Setup
 
 ChampSim depends on the native macOS `clang++` / `g++` toolchain. If you are using Miniconda or Anaconda, avoid using the Conda-provided C++ compiler because it triggers header failures related to `from_chars_floating_point.h`. Additionally, ensure the Xcode Command Line Tools license is accepted if macOS recently updated Xcode.
@@ -174,4 +229,3 @@ python3 analyze_accesses.py sample_fotonik3d.csv
 python3 analyze_accesses.py sample_bfscc.csv
 python3 analyze_accesses.py sample_xalancbmk.csv
 ```
-
