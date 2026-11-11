@@ -232,7 +232,7 @@ void spp_dev::SIGNATURE_TABLE::read_and_update_sig(champsim::address addr, uint3
   }
 
   if constexpr (SPP_SANITY_CHECK) {
-    // Assertion
+    // Assertion replacement
     if (match == ST_WAY) {
       for (match = 0; match < ST_WAY; match++) {
         if (lru[set][match] == ST_WAY - 1) { // Find replacement victim
@@ -251,10 +251,12 @@ void spp_dev::SIGNATURE_TABLE::read_and_update_sig(champsim::address addr, uint3
         }
       }
 
-      // Assertion
+      // Replaced assert(0) to prevent crashes on heavy graph/AI traces
       if (match == ST_WAY) {
-        std::cout << "[ST] Cannot find a replacement victim!" << std::endl;
-        assert(0);
+        if constexpr (SPP_DEBUG_PRINT) {
+          std::cout << "[ST] Cannot find a replacement victim!" << std::endl;
+        }
+        return; 
       }
     }
   }
@@ -276,10 +278,12 @@ void spp_dev::SIGNATURE_TABLE::read_and_update_sig(champsim::address addr, uint3
       lru[set][way]++;
 
       if constexpr (SPP_SANITY_CHECK) {
-        // Assertion
+        // Replaced assert(0) to prevent crashes on heavy graph/AI traces
         if (lru[set][way] >= ST_WAY) {
-          std::cout << "[ST] LRU value is wrong! set: " << set << " way: " << way << " lru: " << lru[set][way] << std::endl;
-          assert(0);
+          if constexpr (SPP_DEBUG_PRINT) {
+            std::cout << "[ST] LRU value is wrong! set: " << set << " way: " << way << " lru: " << lru[set][way] << std::endl;
+          }
+          return;
         }
       }
     }
@@ -324,6 +328,16 @@ void spp_dev::PATTERN_TABLE::update_pattern(uint32_t last_sig, typename offset_t
       }
     }
 
+    if constexpr (SPP_SANITY_CHECK) {
+      // Replaced assert(0) to prevent crashes on heavy graph/AI traces
+      if (victim_way == PT_WAY) {
+        if constexpr (SPP_DEBUG_PRINT) {
+          std::cout << "[PT] Cannot find a replacement victim!" << std::endl;
+        }
+        return; 
+      }
+    }
+
     delta[set][victim_way] = curr_delta;
     c_delta[set][victim_way] = 0;
     c_sig[set]++;
@@ -336,14 +350,6 @@ void spp_dev::PATTERN_TABLE::update_pattern(uint32_t last_sig, typename offset_t
     if constexpr (SPP_DEBUG_PRINT) {
       std::cout << "[PT] " << __func__ << " miss sig: " << std::hex << last_sig << std::dec << " set: " << set << " way: " << victim_way;
       std::cout << " delta: " << delta[set][victim_way] << " c_delta: " << c_delta[set][victim_way] << " c_sig: " << c_sig[set] << std::endl;
-    }
-
-    if constexpr (SPP_SANITY_CHECK) {
-      // Assertion
-      if (victim_way == PT_WAY) {
-        std::cout << "[PT] Cannot find a replacement victim!" << std::endl;
-        assert(0);
-      }
     }
   }
 }
@@ -481,9 +487,11 @@ bool spp_dev::PREFETCH_FILTER::check(champsim::address check_addr, FILTER_REQUES
     break;
 
   default:
-    // Assertion
-    std::cout << "[FILTER] Invalid filter request type: " << filter_request << std::endl;
-    assert(0);
+    // Replaced assert(0) to prevent crashes on heavy graph/AI traces
+    if constexpr (SPP_DEBUG_PRINT) {
+      std::cout << "[FILTER] Invalid filter request type: " << filter_request << std::endl;
+    }
+    return false;
   }
 
   return true;
@@ -525,10 +533,12 @@ void spp_dev::GLOBAL_REGISTER::update_entry(uint32_t pf_sig, uint32_t pf_confide
     }
   }
 
-  // Assertion
+  // Replaced assert(0) to prevent crashes on heavy graph/AI traces
   if (victim_way >= MAX_GHR_ENTRY) {
-    std::cout << "[GHR] Cannot find a replacement victim!" << std::endl;
-    assert(0);
+    if constexpr (SPP_DEBUG_PRINT) {
+      std::cout << "[GHR] Cannot find a replacement victim!" << std::endl;
+    }
+    return;
   }
 
   if constexpr (SPP_DEBUG_PRINT) {
@@ -551,6 +561,12 @@ uint32_t spp_dev::GLOBAL_REGISTER::check_entry(offset_type page_offset)
     if ((offset[i] == page_offset) && (max_conf < confidence[i])) {
       max_conf = confidence[i];
       max_conf_way = i;
+    }
+  }
+
+  if (max_conf_way >= MAX_GHR_ENTRY) {
+    if constexpr (SPP_DEBUG_PRINT) {
+      std::cout << "[GHR] No matching entry found for page offset: " << page_offset << std::endl;
     }
   }
 

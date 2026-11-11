@@ -9,7 +9,7 @@ WARMUP=50000000
 SIM=100000000
 
 # Limit to 3 concurrent simulations to protect your 8GB RAM
-MAX_JOBS=3
+MAX_JOBS=1
 
 echo "Starting parallel simulations for the Stride prefetcher configuration..."
 

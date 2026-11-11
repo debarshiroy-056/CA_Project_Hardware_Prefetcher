@@ -1,0 +1,7 @@
+{
+  "executable_name": "spp_dev_sim",
+  "L1I": { "prefetcher": "no" },
+  "L1D": { "prefetcher": "no" },
+  "L2C": { "prefetcher": "spp_dev" },
+  "LLC": { "prefetcher": "no" }
+}

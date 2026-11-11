@@ -3,72 +3,50 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 import numpy as np
 
+from plot_style import PREFETCHER_COLORS, apply_publication_style, save_figure
+
 PLOT_DIR = Path('plots')
 PLOT_DIR.mkdir(exist_ok=True)
+apply_publication_style()
 
-# Enforce academic formatting
-plt.rcParams['font.family'] = 'serif'
-plt.rcParams['font.serif'] = ['Times New Roman']
-plt.rcParams['font.size'] = 12
+df = pd.read_csv("endsem_evaluation_metrics.csv")
+df['Memory_Traffic'] = pd.to_numeric(df['Memory_Traffic'], errors='coerce')
 
-df = pd.read_csv("simulation_summary.csv")
-df = df[df['Status'] == 'Success']
+# Pivot data
+dram_df = df.pivot(index='Trace', columns='Prefetcher', values='Memory_Traffic')
 
-# Pivot data to get Traces as rows and Configs as columns
-dram_df = df.pivot(index='Trace', columns='Config', values='DRAM_Traffic')
-
-# A normalized comparison is meaningful only when a workload has a valid
-# baseline and at least one prefetcher result.
-prefetchers = ['stride', 'spp', 'ampm']
-available_prefetchers = [c for c in prefetchers if c in dram_df.columns]
-dram_df = dram_df.dropna(subset=['baseline'], how='any')
-dram_df = dram_df[dram_df['baseline'] > 0]
-dram_df = dram_df.dropna(subset=available_prefetchers, how='any')
-
-baseline_dram = dram_df['baseline']
-dram_df[available_prefetchers] = dram_df[available_prefetchers].replace(0, np.nan)
-dram_df = dram_df.dropna(subset=available_prefetchers, how='any')
+cols = ['AMPM', 'IP-Stride', 'FDP-Stride', 'SPP', 'Berti', 'Pythia']
+baseline_dram = dram_df['Baseline'].replace(0, np.nan) # Prevent division by zero
 
 norm_dram_df = pd.DataFrame(index=dram_df.index)
-plot_cols = available_prefetchers
-for prefetcher in plot_cols:
+for prefetcher in cols:
     norm_dram_df[prefetcher] = dram_df[prefetcher] / baseline_dram
 
-# Keep only workloads with at least one available normalized result.
-norm_dram_df = norm_dram_df.dropna(how='all')
-norm_dram_df.index = [trace.split('.')[0] for trace in norm_dram_df.index]
+# If all values are NaN (meaning LLC misses weren't recorded), skip plotting empty bars
+if norm_dram_df.isna().all().all():
+    print("Warning: Memory_Traffic contains no non-zero baseline values to normalize against.")
+else:
+    ax = norm_dram_df[cols].plot(
+        kind='bar', figsize=(14, 8), edgecolor='white', linewidth=0.7, width=0.85,
+        color=[PREFETCHER_COLORS[c] for c in cols],
+    )
+    plt.title('DRAM Traffic Overhead (Normalized to Baseline)', fontsize=16, fontweight='bold', pad=14)
+    plt.ylabel('Normalized DRAM Traffic')
+    plt.xlabel('Workload (Traces)')
+    baseline_line = plt.axhline(y=1.0, color='#333333', linestyle='--', linewidth=1.3, label='Baseline (1.0)')
 
-y_label = 'Normalized DRAM Traffic (Relative to Baseline)'
+    y_max = norm_dram_df.max().max()
+    ax.set_ylim(0, max(1.1, y_max * 1.15))
 
-# Plotting
-ax = norm_dram_df[plot_cols].plot(
-    kind='bar', figsize=(14, 8), edgecolor='black', width=0.8
-)
+    for container in ax.containers:
+        labels = [f'{v:.2f}' if pd.notna(v) else '' for v in container.datavalues]
+        ax.bar_label(container, labels=labels, padding=3, fontsize=8, color='#222222', rotation=90)
 
-plt.title('DRAM Traffic Overhead', fontsize=16, fontweight='bold')
-plt.ylabel(y_label, fontsize=14)
-plt.xlabel('Workload (Traces)', fontsize=14)
+    plt.xticks(rotation=35, ha='right')
+    handles, labels = ax.get_legend_handles_labels()
+    plt.legend(handles + [baseline_line], labels + ['Baseline (1.0)'], title='Configuration', ncols=3)
+    plt.grid(axis='y', linestyle=':', linewidth=0.8, alpha=0.7)
+    plt.gcf().set_layout_engine('constrained')
 
-# Draw a red dashed line at 1.0 to show the baseline.
-baseline_line = plt.axhline(y=1.0, color='red', linestyle='--', label='Baseline (1.0)')
-
-# Dynamically set y-axis limits 
-y_max = norm_dram_df.max().max()
-if pd.isna(y_max) or y_max == 0:
-    y_max = 1.0
-ax.set_ylim(0, max(1.1, y_max * 1.15))
-
-for container in ax.containers:
-    ax.bar_label(container, fmt='%.2f', padding=3, fontsize=9)
-
-# Formatting tweaks
-plt.xticks(rotation=35, ha='right', fontsize=10)
-bar_handles = [container.patches[0] for container in ax.containers]
-plt.legend(bar_handles + [baseline_line], ['Stride', 'SPP', 'AMPM', 'Baseline (1.0)'],
-           title='Configuration')
-plt.grid(axis='y', linestyle='--', alpha=0.7)
-plt.tight_layout()
-
-# Save the high-res image
-plt.savefig(PLOT_DIR / 'dram_traffic.png', dpi=300)
-print(f"Success: Saved {PLOT_DIR / 'dram_traffic.png'}")
+    save_figure(plt.gcf(), PLOT_DIR / 'dram_traffic.png')
+    print(f"Success: Saved {PLOT_DIR / 'dram_traffic.png'}")

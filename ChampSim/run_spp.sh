@@ -1,22 +1,11 @@
 #!/bin/bash
-mkdir -p results_spp
+TRACE_DIR="traces" 
+mkdir -p results_spp_dev
 
-BINARY="bin/1C.fullBW.spp"
-WARMUP=50000000
-SIM=100000000
-MAX_JOBS=3
-
-echo "Starting parallel simulations for the SPP configuration..."
-
-for trace in traces/*; do
-    trace_name=$(basename "$trace")
-    echo "Launching SPP run: $trace_name"
-    $BINARY --warmup-instructions $WARMUP --simulation-instructions $SIM "$trace" > "results_spp/${trace_name}.txt" &
-    
-    while (( $(jobs -p | wc -l) >= MAX_JOBS )); do
-        sleep 5
-    done
+echo "Starting SPP simulations (Strictly Sequential)..."
+for trace in "$TRACE_DIR"/*.xz; do
+    trace_name=$(basename "$trace" .xz)
+    echo "  -> Running $trace_name..."
+    ./bin/spp_dev_sim -w 50000000 -i 100000000 "$trace" > "results_spp_dev/${trace_name}.txt"
 done
-
-wait
-echo "Done! All SPP results are saved in the results_spp/ folder."
+echo "SPP simulations completed!"

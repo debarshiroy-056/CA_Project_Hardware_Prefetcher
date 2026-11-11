@@ -1,0 +1,7 @@
+{
+  "executable_name": "pythia_sim",
+  "L1I": { "prefetcher": "no" },
+  "L1D": { "prefetcher": "no" },
+  "L2C": { "prefetcher": "pythia" },
+  "LLC": { "prefetcher": "no" }
+}
